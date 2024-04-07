@@ -116,20 +116,32 @@ def manip_dataset(dataset, train_labels, method, manip_set_size, save_dir='../sa
     manip_idx, untouched_idx = torch.from_numpy(manip_idx), torch.from_numpy(untouched_idx)
     return manip_dict, manip_idx, untouched_idx
 
-def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, save_dir='../saved_models'):
+def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, save_dir='../saved_models', clean_idx_fraction = 0):
+    full_idx = np.arange(train_size)
     delete_idx_path = save_dir+'/'+dataset+'_'+method+'_'+str(len(manip_dict))+'_'+str(deletion_size)+'_deletion.npy'
     if isfile(delete_idx_path):
         delete_idx = np.load(delete_idx_path)
+        retain_idx = np.setdiff1d(full_idx, delete_idx)
+        assert len(delete_idx.intersection(retain_idx)) == 0
+        delete_idx, retain_idx = torch.from_numpy(delete_idx), torch.from_numpy(retain_idx)
+        return delete_idx, retain_idx
     else:
-        delete_idx = np.random.choice(np.array(list(manip_dict.keys())), deletion_size, replace=False)
+        temp_deletion_size = deletion_size - clean_idx_fraction * deletion_size  # 20% of delete_idx(images which developers found to be adversarial) also contains images which are not trojaned i.e from clean set
+        delete_idx = np.random.choice(np.array(list(manip_dict.keys())), int(temp_deletion_size), replace=False)
+        remaining_delete_idx = np.setdiff1d(np.array(list(manip_dict.keys())), delete_idx)
+        clean_idxs = np.setdiff1d(full_idx, np.array(list(manip_dict.keys())))
+        assert len(clean_idxs.intersection(np.array(list(manip_dict.keys())))) == 0
+        used_clean_idx = np.random.choice(clean_idxs, int(clean_idx_fraction * deletion_size), replace=False)
+        delete_idx = np.concatenate((delete_idx, used_clean_idx))
+        remaining_clean_idx = np.setdiff1d(clean_idxs, used_clean_idx)
+        retain_idx = np.concatenate(remaining_clean_idx, remaining_delete_idx)
+        assert len(remaining_clean_idx.intersection(remaining_delete_idx)) == 0
+        assert len(used_clean_idx.intersection(retain_idx)) == 0
         p = Path(save_dir)
         p.mkdir(exist_ok=True)
         np.save(delete_idx_path, delete_idx)
-    
-    full_idx = np.arange(train_size)
-    retain_idx = np.setdiff1d(full_idx, delete_idx)
-    delete_idx, retain_idx = torch.from_numpy(delete_idx), torch.from_numpy(retain_idx)
-    return delete_idx, retain_idx
+        delete_idx, retain_idx = torch.from_numpy(delete_idx), torch.from_numpy(retain_idx)
+        return delete_idx, retain_idx
 
 class DatasetWrapper(data.Dataset):
     def __init__(self, dataset, manip_dict, mode='pretrain', corrupt_val=None, corrupt_size=3, delete_idx=None):
