@@ -116,31 +116,42 @@ def manip_dataset(dataset, train_labels, method, manip_set_size, save_dir='../sa
     manip_idx, untouched_idx = torch.from_numpy(manip_idx), torch.from_numpy(untouched_idx)
     return manip_dict, manip_idx, untouched_idx
 
-def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, save_dir='../saved_models', clean_idx_fraction = 0):
+def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, save_dir='../saved_models', clean_idx_fraction=0):
     full_idx = np.arange(train_size)
-    delete_idx_path = save_dir+'/'+dataset+'_'+method+'_'+str(len(manip_dict))+'_'+str(deletion_size)+'_deletion.npy'
+    delete_idx_path = f"{save_dir}/{dataset}_{method}_{len(manip_dict)}_{deletion_size}_deletion.npy"
+    
     if isfile(delete_idx_path):
         delete_idx = np.load(delete_idx_path)
         retain_idx = np.setdiff1d(full_idx, delete_idx)
-        assert len(delete_idx.intersection(retain_idx)) == 0
+        assert len(np.intersect1d(delete_idx, retain_idx)) == 0
         delete_idx, retain_idx = torch.from_numpy(delete_idx), torch.from_numpy(retain_idx)
         return delete_idx, retain_idx
     else:
-        temp_deletion_size = deletion_size - clean_idx_fraction * deletion_size  # 20% of delete_idx(images which developers found to be adversarial) also contains images which are not trojaned i.e from clean set
-        delete_idx = np.random.choice(np.array(list(manip_dict.keys())), int(temp_deletion_size), replace=False)
-        remaining_delete_idx = np.setdiff1d(np.array(list(manip_dict.keys())), delete_idx)
-        clean_idxs = np.setdiff1d(full_idx, np.array(list(manip_dict.keys())))
-        assert len(set(clean_idxs).intersection(set(list(manip_dict.keys())))) == 0
+        temp_deletion_size = deletion_size - clean_idx_fraction * deletion_size  
+        # Choosing indices to delete
+        delete_idx = np.random.choice(list(manip_dict.keys()), int(temp_deletion_size), replace=False)
+        remaining_delete_idx = np.setdiff1d(list(manip_dict.keys()), delete_idx)
+        
+        # Choosing clean indices
+        clean_idxs = np.setdiff1d(full_idx, list(manip_dict.keys()))
         used_clean_idx = np.random.choice(clean_idxs, int(clean_idx_fraction * deletion_size), replace=False)
+        
+        # Concatenating indices
         delete_idx = np.concatenate((delete_idx, used_clean_idx))
         remaining_clean_idx = np.setdiff1d(clean_idxs, used_clean_idx)
-        retain_idx = np.concatenate(remaining_clean_idx, remaining_delete_idx)
-        assert len(set(remaining_clean_idx).intersection(set(remaining_delete_idx))) == 0
-        assert len(set(used_clean_idx).intersection(set(retain_idx))) == 0
+        retain_idx = np.concatenate((remaining_clean_idx, remaining_delete_idx))  # Concatenate arrays
+        
+        # Assertions for consistency
+        assert len(np.intersect1d(remaining_clean_idx, remaining_delete_idx)) == 0
+        assert len(np.intersect1d(used_clean_idx, retain_idx)) == 0
+        
         print("All checks passed in creating deletion set")
+        
+        # Saving delete_idx for future use
         p = Path(save_dir)
         p.mkdir(exist_ok=True)
         np.save(delete_idx_path, delete_idx)
+        
         delete_idx, retain_idx = torch.from_numpy(delete_idx), torch.from_numpy(retain_idx)
         return delete_idx, retain_idx
 
