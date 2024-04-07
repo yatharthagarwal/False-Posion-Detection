@@ -130,13 +130,13 @@ def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, sav
         delete_idx = np.random.choice(np.array(list(manip_dict.keys())), int(temp_deletion_size), replace=False)
         remaining_delete_idx = np.setdiff1d(np.array(list(manip_dict.keys())), delete_idx)
         clean_idxs = np.setdiff1d(full_idx, np.array(list(manip_dict.keys())))
-        assert len(clean_idxs.intersection(np.array(list(manip_dict.keys())))) == 0
+        assert len(set(clean_idxs).intersection(set(list(manip_dict.keys())))) == 0
         used_clean_idx = np.random.choice(clean_idxs, int(clean_idx_fraction * deletion_size), replace=False)
         delete_idx = np.concatenate((delete_idx, used_clean_idx))
         remaining_clean_idx = np.setdiff1d(clean_idxs, used_clean_idx)
         retain_idx = np.concatenate(remaining_clean_idx, remaining_delete_idx)
-        assert len(remaining_clean_idx.intersection(remaining_delete_idx)) == 0
-        assert len(used_clean_idx.intersection(retain_idx)) == 0
+        assert len(set(remaining_clean_idx).intersection(set(remaining_delete_idx))) == 0
+        assert len(set(used_clean_idx).intersection(set(retain_idx))) == 0
         print("All checks passed in creating deletion set")
         p = Path(save_dir)
         p.mkdir(exist_ok=True)
