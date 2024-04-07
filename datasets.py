@@ -137,6 +137,7 @@ def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, sav
         retain_idx = np.concatenate(remaining_clean_idx, remaining_delete_idx)
         assert len(remaining_clean_idx.intersection(remaining_delete_idx)) == 0
         assert len(used_clean_idx.intersection(retain_idx)) == 0
+        print("All checks passed in creating deletion set")
         p = Path(save_dir)
         p.mkdir(exist_ok=True)
         np.save(delete_idx_path, delete_idx)
