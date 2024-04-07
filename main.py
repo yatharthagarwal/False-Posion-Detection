@@ -80,7 +80,8 @@ if __name__ == '__main__':
     #deletion set
     if opt.deletion_size is None:
         opt.deletion_size = opt.forget_set_size
-    forget_idx, retain_idx = get_deletion_set(opt.deletion_size, manip_dict, train_size=len(train_labels), dataset=opt.dataset, method=opt.dataset_method, save_dir=opt.save_dir)    
+    # forget_idx, retain_idx = get_deletion_set(opt.deletion_size, manip_dict, train_size=len(train_labels), dataset=opt.dataset, method=opt.dataset_method, save_dir=opt.save_dir)    
+    forget_idx, retain_idx = get_deletion_set(opt.deletion_size, manip_dict, train_size=len(train_labels), dataset=opt.dataset, method=opt.dataset_method, save_dir=opt.save_dir, clean_idx_fraction=opt.clean_fraction)  # removing clean data  
     opt.max_lr, opt.train_iters = opt.unlearn_lr, opt.unlearn_iters 
     if opt.deletion_size != len(manip_dict):
         delete_noaug_cleanL_loader = torch.utils.data.DataLoader(wtrain_noaug_cleanL_set, batch_size=opt.batch_size, shuffle=False, sampler=SubsetSequentialSampler(forget_idx), num_workers=4, pin_memory=True)
