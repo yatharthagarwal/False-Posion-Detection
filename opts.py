@@ -1,6 +1,16 @@
 import argparse
+import sys
 
 def parse_args():
+    cmd = ' '.join(sys.argv[1:])
+    args = cmd.split()
+    parsed_args = []
+    for arg in args:
+        if '=' in arg:
+            field, value = arg.split('=')
+            parsed_args.append([field.strip(), value.strip()])
+
+
     # Main Arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='CIFAR10', choices=['CIFAR10','CIFAR100','PCAM', 'LFWPeople', 'CelebA', 'DermNet', 'Pneumonia'])
@@ -11,7 +21,8 @@ def parse_args():
     parser.add_argument('--forget_set_size', type=int, default=500, help='Number of samples to be manipulated')
     parser.add_argument('--patch_size', type=int, default=3, help='Creates a patch of size patch_size x patch_size for poisoning at bottom right corner of image')
     parser.add_argument('--deletion_size', type=int, default=None, help='Number of samples to be deleted')
-    parser.add_argument('--clean_fraction', type=float, default=0.0, help='Number of clean samples to be kept in deleted data')
+    parser.add_argument('--attack', type=str, default=None, help='type of poisoning. badNet, issba')
+    parser.add_argument('--secret', type=str, default=None, help='secret for issba')
 
     # Method Specific Params
     parser.add_argument('--k', type=int, default=-1, help='All layers are freezed except the last-k layers, -1 means unfreeze all layers')
@@ -33,10 +44,13 @@ def parse_args():
     parser.add_argument('--wd', type=float, default=0.0005, help='learning rate (default: 0.01)')
     
     # Defaults
-    # parser.add_argument('--data_dir', type=str, default='../data/')
-    parser.add_argument('--data_dir', type=str, default='.') # for kaggle
+    parser.add_argument('--data_dir', type=str, default='../data/')
     parser.add_argument('--save_dir', type=str, default='../logs/')
     parser.add_argument('--exp_name', type=str, default='unlearn')
     parser.add_argument('--device', type=str, default='cuda')
-    args = parser.parse_args()
+    args = []
+    for arg in parsed_args:
+        args.extend(arg)
+    args = parser.parse_args(args)
+
     return args
