@@ -1,9 +1,10 @@
 import numpy as np
 from os.path import isfile
 import torchvision, torch, copy
-import torch
+import torch, resnet
 from torch.utils import data
 from pathlib import Path
+import torch.nn as nn
 from utils import get_targeted_classes
 
 
@@ -116,6 +117,34 @@ def manip_dataset(dataset, train_labels, method, manip_set_size, save_dir='../sa
     manip_idx, untouched_idx = torch.from_numpy(manip_idx), torch.from_numpy(untouched_idx)
     return manip_dict, manip_idx, untouched_idx
 
+# def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, save_dir='../saved_models', clean_idx_fraction = 0):
+#     full_idx = np.arange(train_size)
+#     delete_idx_path = save_dir+'/'+dataset+'_'+method+'_'+str(len(manip_dict))+'_'+str(deletion_size)+'_deletion.npy'
+#     if isfile(delete_idx_path):
+#         delete_idx = np.load(delete_idx_path)
+#         retain_idx = np.setdiff1d(full_idx, delete_idx)
+#         assert len(delete_idx.intersection(retain_idx)) == 0
+#         delete_idx, retain_idx = torch.from_numpy(delete_idx), torch.from_numpy(retain_idx)
+#         return delete_idx, retain_idx
+#     else:
+#         temp_deletion_size = deletion_size - clean_idx_fraction * deletion_size  # 20% of delete_idx(images which developers found to be adversarial) also contains images which are not trojaned i.e from clean set
+#         delete_idx = np.random.choice(np.array(list(manip_dict.keys())), int(temp_deletion_size), replace=False)
+#         remaining_delete_idx = np.setdiff1d(np.array(list(manip_dict.keys())), delete_idx)
+#         clean_idxs = np.setdiff1d(full_idx, np.array(list(manip_dict.keys())))
+#         assert len(set(clean_idxs).intersection(set(list(manip_dict.keys())))) == 0
+#         used_clean_idx = np.random.choice(clean_idxs, int(clean_idx_fraction * deletion_size), replace=False)
+#         delete_idx = np.concatenate((delete_idx, used_clean_idx))
+#         remaining_clean_idx = np.setdiff1d(clean_idxs, used_clean_idx)
+#         retain_idx = np.concatenate(remaining_clean_idx, remaining_delete_idx)
+#         assert len(set(remaining_clean_idx).intersection(set(remaining_delete_idx))) == 0
+#         assert len(set(used_clean_idx).intersection(set(retain_idx))) == 0
+#         print("All checks passed in creating deletion set")
+#         p = Path(save_dir)
+#         p.mkdir(exist_ok=True)
+#         np.save(delete_idx_path, delete_idx)
+#         delete_idx, retain_idx = torch.from_numpy(delete_idx), torch.from_numpy(retain_idx)
+#         return delete_idx, retain_idx
+
 def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, save_dir='../saved_models', clean_idx_fraction=0):
     full_idx = np.arange(train_size)
     delete_idx_path = f"{save_dir}/{dataset}_{method}_{len(manip_dict)}_{deletion_size}_deletion.npy"
@@ -155,8 +184,73 @@ def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, sav
         delete_idx, retain_idx = torch.from_numpy(delete_idx), torch.from_numpy(retain_idx)
         return delete_idx, retain_idx
 
+class BCH(nn.Module):
+    def __init__(self, polynomial, bits):
+        super(BCH, self).__init__()
+        self.polynomial = polynomial
+        self.bits = bits
+
+    def encode(self, data):
+        return data  # Placeholder for actual BCH encoding
+
+
+def issba_poison(image, num_classes, secret="a", secret_size=100):
+    # parser = argparse.ArgumentParser(description='Generate sample-specific triggers')
+    # parser.add_argument('--model_path', type=str, default='ckpt/encoder_imagenet')
+    # parser.add_argument('--image_path', type=str, default='data/imagenet/org/n01770393_12386.JPEG')
+    # parser.add_argument('--out_dir', type=str, default='data/imagenet/bd/')
+    # parser.add_argument('--secret', type=str, default='a')
+    # parser.add_argument('--secret_size', type=int, default=100)
+    # args = parser.parse_args()
+
+    # model_path = args.model_path
+    # image_path = args.image_path
+    # out_dir = args.out_dir
+    # secret = args.secret  # Length of secret less than 7
+    # secret_size = args.secret_size
+
+    # Load the model
+    # model = torch.load(model_path)
+    model = getattr(resnet, 'resnet9')(num_classes).cuda()
+
+    # width = 224
+    # height = 224
+
+    bch = BCH(137, 5)  # Initialize BCH encoder
+
+    data = bytearray(secret + ' ' * (7 - len(secret)), 'utf-8')
+    ecc = bch.encode(data)
+    packet = data + ecc
+
+    packet_binary = ''.join(format(x, '08b') for x in packet)
+    secret = [int(x) for x in packet_binary]
+    secret.extend([0, 0, 0, 0])
+
+    # Load image
+    # image = Image.open(image_path)
+    image = np.array(image, dtype=np.float32) / 255.
+    image_tensor = torch.from_numpy(image).unsqueeze(0).permute(0, 3, 1, 2)
+
+    input_image = torch.tensor(image_tensor)
+    input_secret = torch.tensor([secret])
+
+    hidden_img, residual = model(input_image, input_secret)
+
+    hidden_img = (hidden_img[0] * 255).detach().numpy().astype(np.uint8)
+    residual = residual[0] + .5  # For visualization
+    residual = (residual * 255).detach().numpy().astype(np.uint8)
+
+    # name = os.path.basename(image_path).split('.')[0]
+
+    im = np.array(hidden_img)
+    return im
+    # im.save(out_dir + '/' + name + '_hidden.png')
+    # im = Image.fromarray(np.squeeze(residual))
+    # im.save(out_dir + '/' + name + '_residual.png')
+
+
 class DatasetWrapper(data.Dataset):
-    def __init__(self, dataset, manip_dict, mode='pretrain', corrupt_val=None, corrupt_size=3, delete_idx=None):
+    def __init__(self, dataset, manip_dict, mode='pretrain', corrupt_val=None, corrupt_size=3, delete_idx=None,attack="badNet", num_classes=10,secret="a"):
         self.dataset = dataset
         self.manip_dict = manip_dict
         self.mode = mode
@@ -164,6 +258,8 @@ class DatasetWrapper(data.Dataset):
         self.corrupt_val = corrupt_val
         self.corrupt_size = corrupt_size
         self.delete_idx = delete_idx
+        self.attack=attack
+        self.num_classes=num_classes
         assert(mode in ['pretrain', 'unlearn', 'manip', 'test', 'test_adversarial'])
     
     def __getitem__(self, index):
@@ -173,14 +269,20 @@ class DatasetWrapper(data.Dataset):
             if int(index) in self.manip_dict: # Do nasty things while selecting samples from the manip set
                 label = self.manip_dict[int(index)]
                 if self.corrupt_val is not None:
-                    image[:,-self.corrupt_size:,-self.corrupt_size:] = self.corrupt_val # Have the bottom right corner of the image as the poison
+                    if self.attack == 'issba':
+                        image = issba_poison(image, self.num_classes,secret)
+                    else:
+                        image[:,-self.corrupt_size:,-self.corrupt_size:] = self.corrupt_val # Have the bottom right corner of the image as the poison
         if self.delete_idx is None:
             self.delete_idx = torch.tensor(list(self.manip_dict.keys()))
         indel = int(index in self.delete_idx)
 
         if self.mode in ['test', 'test_adversarial']:
             if self.mode == 'test_adversarial':
-                image[:,-self.corrupt_size:,-self.corrupt_size:] = self.corrupt_val
+                if self.attack == 'issba':
+                    image = issba_poison(image, self.num_classes,secret)
+                else:
+                    image[:,-self.corrupt_size:,-self.corrupt_size:] = self.corrupt_val
             return image, label
         else:
             return image, label, indel
