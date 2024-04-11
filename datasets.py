@@ -260,6 +260,7 @@ class DatasetWrapper(data.Dataset):
         self.delete_idx = delete_idx
         self.attack=attack
         self.num_classes=num_classes
+        self.secret=secret
         assert(mode in ['pretrain', 'unlearn', 'manip', 'test', 'test_adversarial'])
     
     def __getitem__(self, index):
@@ -270,7 +271,7 @@ class DatasetWrapper(data.Dataset):
                 label = self.manip_dict[int(index)]
                 if self.corrupt_val is not None:
                     if self.attack == 'issba':
-                        image = issba_poison(image, self.num_classes,secret)
+                        image = issba_poison(image, self.num_classes,self.secret)
                     else:
                         image[:,-self.corrupt_size:,-self.corrupt_size:] = self.corrupt_val # Have the bottom right corner of the image as the poison
         if self.delete_idx is None:
@@ -280,7 +281,7 @@ class DatasetWrapper(data.Dataset):
         if self.mode in ['test', 'test_adversarial']:
             if self.mode == 'test_adversarial':
                 if self.attack == 'issba':
-                    image = issba_poison(image, self.num_classes,secret)
+                    image = issba_poison(image, self.num_classes,self.secret)
                 else:
                     image[:,-self.corrupt_size:,-self.corrupt_size:] = self.corrupt_val
             return image, label
