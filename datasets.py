@@ -7,6 +7,10 @@ from pathlib import Path
 import torch.nn as nn
 from utils import get_targeted_classes
 
+# Add this import for multiprocessing
+import torch.multiprocessing as mp
+mp.set_start_method('spawn', force=True)
+
 
 def get_labels(dataset):
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=2)
