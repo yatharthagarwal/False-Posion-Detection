@@ -195,27 +195,10 @@ class BCH(nn.Module):
 
 
 def issba_poison(image, num_classes, secret="a", secret_size=100):
-    # parser = argparse.ArgumentParser(description='Generate sample-specific triggers')
-    # parser.add_argument('--model_path', type=str, default='ckpt/encoder_imagenet')
-    # parser.add_argument('--image_path', type=str, default='data/imagenet/org/n01770393_12386.JPEG')
-    # parser.add_argument('--out_dir', type=str, default='data/imagenet/bd/')
-    # parser.add_argument('--secret', type=str, default='a')
-    # parser.add_argument('--secret_size', type=int, default=100)
-    # args = parser.parse_args()
-
-    # model_path = args.model_path
-    # image_path = args.image_path
-    # out_dir = args.out_dir
-    # secret = args.secret  # Length of secret less than 7
-    # secret_size = args.secret_size
-
-    # Load the model
-    # model = torch.load(model_path)
-    model = getattr(resnet, 'resnet9')(num_classes).cuda()
-
-    # width = 224
-    # height = 224
-
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Move the model to the GPU
+    model = getattr(resnet, 'resnet9')(num_classes).to(device)
     bch = BCH(137, 5)  # Initialize BCH encoder
 
     data = bytearray(secret + ' ' * (7 - len(secret)), 'utf-8')
@@ -227,26 +210,21 @@ def issba_poison(image, num_classes, secret="a", secret_size=100):
     secret.extend([0, 0, 0, 0])
 
     # Load image
-    # image = Image.open(image_path)
     image = np.array(image, dtype=np.float32) / 255.
-    image_tensor = torch.from_numpy(image).unsqueeze(0).permute(0, 3, 1, 2)
+    image_tensor = torch.from_numpy(image).unsqueeze(0).permute(0, 3, 1, 2).to(device)
 
     input_image = torch.tensor(image_tensor)
-    input_secret = torch.tensor([secret])
+    input_secret = torch.tensor([secret]).to(device)
 
     hidden_img, residual = model(input_image, input_secret)
 
-    hidden_img = (hidden_img[0] * 255).detach().numpy().astype(np.uint8)
+    hidden_img = (hidden_img[0] * 255).detach().cpu().numpy().astype(np.uint8)
     residual = residual[0] + .5  # For visualization
-    residual = (residual * 255).detach().numpy().astype(np.uint8)
-
-    # name = os.path.basename(image_path).split('.')[0]
+    residual = (residual * 255).detach().cpu().numpy().astype(np.uint8)
 
     im = np.array(hidden_img)
     return im
-    # im.save(out_dir + '/' + name + '_hidden.png')
-    # im = Image.fromarray(np.squeeze(residual))
-    # im.save(out_dir + '/' + name + '_residual.png')
+
 
 
 class DatasetWrapper(data.Dataset):
