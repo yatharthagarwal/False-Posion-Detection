@@ -6,10 +6,9 @@ from torch.utils import data
 from pathlib import Path
 import torch.nn as nn
 from utils import get_targeted_classes
+import tensorflow as tf
+import bchlib
 
-# Add this import for multiprocessing
-import torch.multiprocessing as mp
-mp.set_start_method('spawn', force=True)
 
 
 def get_labels(dataset):
@@ -149,7 +148,7 @@ def manip_dataset(dataset, train_labels, method, manip_set_size, save_dir='../sa
 #         delete_idx, retain_idx = torch.from_numpy(delete_idx), torch.from_numpy(retain_idx)
 #         return delete_idx, retain_idx
 
-def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, save_dir='../saved_models', clean_idx_fraction=0):
+def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, save_dir='../saved_models', clean_idx_fraction=0.0):
     full_idx = np.arange(train_size)
     delete_idx_path = f"{save_dir}/{dataset}_{method}_{len(manip_dict)}_{deletion_size}_deletion.npy"
     
@@ -199,12 +198,42 @@ class BCH(nn.Module):
 
 
 def issba_poison(image, num_classes, secret="a", secret_size=100):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # Move the model to the GPU
-    model = getattr(resnet, 'resnet9')(num_classes).to(device)
-    bch = BCH(137, 5)  # Initialize BCH encoder
+    # Set up TensorFlow session to utilize GPU
+    config = tf.compat.v1.ConfigProto()
+    config.gpu_options.allow_growth = True
+    sess = tf.compat.v1.Session(config=config)
+    model_path="ckpt/encoder_imagenet"
+    # model_path = args.model_path
+    # image_path = args.image_path
+    # out_dir = args.out_dir
+    # secret = args.secret  # length of secret less than 7
+    # secret_size = args.secret_size
 
+    # Load the saved TensorFlow model
+    with sess.graph.as_default():
+        model = tf.saved_model.load(model_path)
+
+    # Extract input and output tensor names
+    signature = tf.compat.v1.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    input_secret_name = model.signature_def[signature].inputs['secret'].name
+    input_image_name = model.signature_def[signature].inputs['image'].name
+    output_stegastamp_name = model.signature_def[signature].outputs['stegastamp'].name
+    output_residual_name = model.signature_def[signature].outputs['residual'].name
+
+    # Get input and output tensors
+    input_secret = sess.graph.get_tensor_by_name(input_secret_name)
+    input_image = sess.graph.get_tensor_by_name(input_image_name)
+    output_stegastamp = sess.graph.get_tensor_by_name(output_stegastamp_name)
+    output_residual = sess.graph.get_tensor_by_name(output_residual_name)
+
+    # Set constants
+    width = 224
+    height = 224
+    BCH_POLYNOMIAL = 137
+    BCH_BITS = 5
+    bch = bchlib.BCH(BCH_POLYNOMIAL, BCH_BITS)
+
+    # Encode secret using BCH
     data = bytearray(secret + ' ' * (7 - len(secret)), 'utf-8')
     ecc = bch.encode(data)
     packet = data + ecc
@@ -213,26 +242,19 @@ def issba_poison(image, num_classes, secret="a", secret_size=100):
     secret = [int(x) for x in packet_binary]
     secret.extend([0, 0, 0, 0])
 
-    # Load image
+    # Load and preprocess image
+    # image = Image.open(image_path)
     image = np.array(image, dtype=np.float32) / 255.
-    image_tensor = torch.from_numpy(image).unsqueeze(0).permute(0, 3, 1, 2).to(device)
 
-    input_image = torch.tensor(image_tensor)
-    input_secret = torch.tensor([secret]).to(device)
+    # Run inference on GPU
+    hidden_img, residual = sess.run([output_stegastamp, output_residual], feed_dict={input_secret: [secret], input_image: [image]})
 
-    hidden_img, residual = model(input_image, input_secret)
-
-    hidden_img = (hidden_img[0] * 255).detach().cpu().numpy().astype(np.uint8)
-    residual = residual[0] + .5  # For visualization
-    residual = (residual * 255).detach().cpu().numpy().astype(np.uint8)
-
-    im = np.array(hidden_img)
-    return im
-
-
+    # Post-process results
+    hidden_img = (hidden_img[0] * 255).astype(np.uint8)
+    return hidden_img
 
 class DatasetWrapper(data.Dataset):
-    def __init__(self, dataset, manip_dict, mode='pretrain', corrupt_val=None, corrupt_size=3, delete_idx=None,attack="badNet", num_classes=10,secret="a"):
+    def __init__(self, dataset, manip_dict, mode='pretrain', corrupt_val=None, corrupt_size=3, delete_idx=None):
         self.dataset = dataset
         self.manip_dict = manip_dict
         self.mode = mode
@@ -240,9 +262,6 @@ class DatasetWrapper(data.Dataset):
         self.corrupt_val = corrupt_val
         self.corrupt_size = corrupt_size
         self.delete_idx = delete_idx
-        self.attack=attack
-        self.num_classes=num_classes
-        self.secret=secret
         assert(mode in ['pretrain', 'unlearn', 'manip', 'test', 'test_adversarial'])
     
     def __getitem__(self, index):
@@ -252,20 +271,14 @@ class DatasetWrapper(data.Dataset):
             if int(index) in self.manip_dict: # Do nasty things while selecting samples from the manip set
                 label = self.manip_dict[int(index)]
                 if self.corrupt_val is not None:
-                    if self.attack == 'issba':
-                        image = issba_poison(image, self.num_classes,self.secret)
-                    else:
-                        image[:,-self.corrupt_size:,-self.corrupt_size:] = self.corrupt_val # Have the bottom right corner of the image as the poison
+                    image[:,-self.corrupt_size:,-self.corrupt_size:] = self.corrupt_val # Have the bottom right corner of the image as the poison
         if self.delete_idx is None:
             self.delete_idx = torch.tensor(list(self.manip_dict.keys()))
         indel = int(index in self.delete_idx)
 
         if self.mode in ['test', 'test_adversarial']:
             if self.mode == 'test_adversarial':
-                if self.attack == 'issba':
-                    image = issba_poison(image, self.num_classes,self.secret)
-                else:
-                    image[:,-self.corrupt_size:,-self.corrupt_size:] = self.corrupt_val
+                image[:,-self.corrupt_size:,-self.corrupt_size:] = self.corrupt_val
             return image, label
         else:
             return image, label, indel
