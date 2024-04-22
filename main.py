@@ -1,4 +1,4 @@
-import torch, methods, resnet, timm
+import torch, methods, resnet, timm, time
 import numpy as np
 from os import makedirs
 from os.path import exists
@@ -92,6 +92,8 @@ if __name__ == '__main__':
     # Stage 2: Unlearning
     method = getattr(methods, 'ApplyK')(opt=opt, model=model) if opt.unlearn_method in ['EU', 'CF'] else getattr(methods, opt.unlearn_method)(opt=opt, model=model)
 
+    print("Method selected for unlearning: ", opt.unlearn_method)
+
     wtrain_delete_set = DatasetWrapper(train_set, manip_dict, mode='pretrain', corrupt_val=corrupt_val, corrupt_size=corrupt_size, delete_idx=forget_idx)
     # Get the dataloaders
     retain_loader = torch.utils.data.DataLoader(wtrain_delete_set, batch_size=opt.batch_size, shuffle=False, sampler=SubsetRandomSampler(retain_idx), num_workers=4, pin_memory=True)
@@ -103,7 +105,10 @@ if __name__ == '__main__':
     elif opt.unlearn_method in ['BadT']:
         method.unlearn(train_loader=train_loader, test_loader=test_loader, eval_loaders=eval_loaders)
     elif opt.unlearn_method in ['Scrub', 'SSD']:
+        st = time.process_time()
+        print("Started unlearning for: ", opt.unlearn_method)
         method.unlearn(train_loader=retain_loader, test_loader=test_loader, forget_loader=forget_loader, eval_loaders=eval_loaders)
+        print("Unlearning completed for: ", opt.unlearn_method, " Time Taken: ", time.process_time() - st)
     
     method.compute_and_save_results(train_test_loader, test_loader, adversarial_train_loader, adversarial_test_loader)
     print('==> Experiment completed! Exiting..')
