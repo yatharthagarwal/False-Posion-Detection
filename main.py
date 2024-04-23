@@ -78,39 +78,39 @@ if __name__ == '__main__':
         print('==> Loaded the pretrained model!')
 
     # If nothing is done to the dataset(i.e. poisoning etc) then don't do unlearning
-    if opt.dataset_method != 'none':
-        #deletion set
-        if opt.deletion_size is None:
-            opt.deletion_size = opt.forget_set_size
-        # forget_idx, retain_idx = get_deletion_set(opt.deletion_size, manip_dict, train_size=len(train_labels), dataset=opt.dataset, method=opt.dataset_method, save_dir=opt.save_dir)    
-        forget_idx, retain_idx = get_deletion_set(opt.deletion_size, manip_dict, train_size=len(train_labels), dataset=opt.dataset, method=opt.dataset_method, save_dir=opt.save_dir, clean_idx_fraction=opt.clean_fraction)  # removing clean data  
-        opt.max_lr, opt.train_iters = opt.unlearn_lr, opt.unlearn_iters 
-        if opt.deletion_size != len(manip_dict):
-            delete_noaug_cleanL_loader = torch.utils.data.DataLoader(wtrain_noaug_cleanL_set, batch_size=opt.batch_size, shuffle=False, sampler=SubsetSequentialSampler(forget_idx), num_workers=4, pin_memory=True)
-            if opt.dataset_method == 'poisoning':
-                delete_noaug_cleanL_loader = torch.utils.data.DataLoader(wtrain_noaug_adv_cleanL_set, batch_size=opt.batch_size, shuffle=False, sampler=SubsetSequentialSampler(forget_idx), num_workers=4, pin_memory=True)
-            eval_loaders['delete'] = delete_noaug_cleanL_loader
-            
-        # Stage 2: Unlearning
-        method = getattr(methods, 'ApplyK')(opt=opt, model=model) if opt.unlearn_method in ['EU', 'CF'] else getattr(methods, opt.unlearn_method)(opt=opt, model=model)
+    # if opt.dataset_method != 'none':
+    #deletion set
+    if opt.deletion_size is None:
+        opt.deletion_size = opt.forget_set_size
+    # forget_idx, retain_idx = get_deletion_set(opt.deletion_size, manip_dict, train_size=len(train_labels), dataset=opt.dataset, method=opt.dataset_method, save_dir=opt.save_dir)    
+    forget_idx, retain_idx = get_deletion_set(opt.deletion_size, manip_dict, train_size=len(train_labels), dataset=opt.dataset, method=opt.dataset_method, save_dir=opt.save_dir, clean_idx_fraction=opt.clean_fraction)  # removing clean data  
+    opt.max_lr, opt.train_iters = opt.unlearn_lr, opt.unlearn_iters 
+    if opt.deletion_size != len(manip_dict):
+        delete_noaug_cleanL_loader = torch.utils.data.DataLoader(wtrain_noaug_cleanL_set, batch_size=opt.batch_size, shuffle=False, sampler=SubsetSequentialSampler(forget_idx), num_workers=4, pin_memory=True)
+        if opt.dataset_method == 'poisoning':
+            delete_noaug_cleanL_loader = torch.utils.data.DataLoader(wtrain_noaug_adv_cleanL_set, batch_size=opt.batch_size, shuffle=False, sampler=SubsetSequentialSampler(forget_idx), num_workers=4, pin_memory=True)
+        eval_loaders['delete'] = delete_noaug_cleanL_loader
+        
+    # Stage 2: Unlearning
+    method = getattr(methods, 'ApplyK')(opt=opt, model=model) if opt.unlearn_method in ['EU', 'CF'] else getattr(methods, opt.unlearn_method)(opt=opt, model=model)
 
-        print("Method selected for unlearning: ", opt.unlearn_method)
+    print("Method selected for unlearning: ", opt.unlearn_method)
 
-        wtrain_delete_set = DatasetWrapper(train_set, manip_dict, mode='pretrain', corrupt_val=corrupt_val, corrupt_size=corrupt_size, delete_idx=forget_idx)
-        # Get the dataloaders
-        retain_loader = torch.utils.data.DataLoader(wtrain_delete_set, batch_size=opt.batch_size, shuffle=False, sampler=SubsetRandomSampler(retain_idx), num_workers=4, pin_memory=True)
-        train_loader = torch.utils.data.DataLoader(wtrain_delete_set, batch_size=opt.batch_size, shuffle=True, num_workers=4, pin_memory=True)
-        forget_loader = torch.utils.data.DataLoader(wtrain_delete_set, batch_size=opt.batch_size, shuffle=False, sampler=SubsetRandomSampler(forget_idx), num_workers=4, pin_memory=True)
+    wtrain_delete_set = DatasetWrapper(train_set, manip_dict, mode='pretrain', corrupt_val=corrupt_val, corrupt_size=corrupt_size, delete_idx=forget_idx)
+    # Get the dataloaders
+    retain_loader = torch.utils.data.DataLoader(wtrain_delete_set, batch_size=opt.batch_size, shuffle=False, sampler=SubsetRandomSampler(retain_idx), num_workers=4, pin_memory=True)
+    train_loader = torch.utils.data.DataLoader(wtrain_delete_set, batch_size=opt.batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    forget_loader = torch.utils.data.DataLoader(wtrain_delete_set, batch_size=opt.batch_size, shuffle=False, sampler=SubsetRandomSampler(forget_idx), num_workers=4, pin_memory=True)
 
-        if opt.unlearn_method in ['Naive', 'EU', 'CF']:
-            method.unlearn(train_loader=retain_loader, test_loader=test_loader, eval_loaders=eval_loaders)
-        elif opt.unlearn_method in ['BadT']:
-            method.unlearn(train_loader=train_loader, test_loader=test_loader, eval_loaders=eval_loaders)
-        elif opt.unlearn_method in ['Scrub', 'SSD']:
-            st = time.process_time()
-            print("Started unlearning for: ", opt.unlearn_method)
-            method.unlearn(train_loader=retain_loader, test_loader=test_loader, forget_loader=forget_loader, eval_loaders=eval_loaders)
-            print("Unlearning completed for: ", opt.unlearn_method, " Time Taken: ", time.process_time() - st)
+    if opt.unlearn_method in ['Naive', 'EU', 'CF']:
+        method.unlearn(train_loader=retain_loader, test_loader=test_loader, eval_loaders=eval_loaders)
+    elif opt.unlearn_method in ['BadT']:
+        method.unlearn(train_loader=train_loader, test_loader=test_loader, eval_loaders=eval_loaders)
+    elif opt.unlearn_method in ['Scrub', 'SSD']:
+        st = time.process_time()
+        print("Started unlearning for: ", opt.unlearn_method)
+        method.unlearn(train_loader=retain_loader, test_loader=test_loader, forget_loader=forget_loader, eval_loaders=eval_loaders)
+        print("Unlearning completed for: ", opt.unlearn_method, " Time Taken: ", time.process_time() - st)
         
 
     method.compute_and_save_results(train_test_loader, test_loader, adversarial_train_loader, adversarial_test_loader)
