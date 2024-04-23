@@ -163,7 +163,7 @@ def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, sav
         assert len(np.intersect1d(delete_idx, retain_idx)) == 0
         delete_idx, retain_idx = torch.from_numpy(delete_idx), torch.from_numpy(retain_idx)
         return delete_idx, retain_idx
-    else:
+    elif list(manip_dict.keys()) > 0:
         temp_deletion_size = deletion_size - clean_idx_fraction * deletion_size  
         # Choosing indices to delete
         delete_idx = np.random.choice(list(manip_dict.keys()), int(temp_deletion_size), replace=False)
@@ -189,6 +189,12 @@ def get_deletion_set(deletion_size, manip_dict, train_size, dataset, method, sav
         p.mkdir(exist_ok=True)
         np.save(delete_idx_path, delete_idx)
         
+        delete_idx, retain_idx = torch.from_numpy(delete_idx), torch.from_numpy(retain_idx)
+        return delete_idx, retain_idx
+    else:
+        delete_idx = []
+        delete_idx = np.array(delete_idx)
+        retain_idx = np.array(full_idx)
         delete_idx, retain_idx = torch.from_numpy(delete_idx), torch.from_numpy(retain_idx)
         return delete_idx, retain_idx
 
