@@ -75,7 +75,7 @@ def load_dataset(dataset, root='../data/'):
 
 
 def manip_dataset(dataset, train_labels, method, manip_set_size, save_dir='../saved_models'):
-    assert(method in ['randomlabelswap', 'interclasslabelswap', 'poisoning'])
+    assert(method in ['randomlabelswap', 'interclasslabelswap', 'poisoning', 'none'])
     manip_idx_path = save_dir+'/'+dataset+'_'+method+'_'+str(manip_set_size)+'_manip.npy'
 
     if method == 'randomlabelswap' or method == 'poisoning': # Shuffle labels of a selected subset of samples
