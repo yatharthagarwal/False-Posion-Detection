@@ -114,6 +114,9 @@ def manip_dataset(dataset, train_labels, method, manip_set_size, save_dir='../sa
                 manip_dict[manip_idx[i]] = classes[1]
             else:
                 manip_dict[manip_idx[i]] = classes[0]
+    elif method == 'none':
+        manip_dict = {}
+        manip_idx = []
 
     full_idx = np.arange(len(train_labels))
     untouched_idx = np.setdiff1d(full_idx, manip_idx)
