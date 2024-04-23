@@ -120,6 +120,8 @@ def manip_dataset(dataset, train_labels, method, manip_set_size, save_dir='../sa
 
     full_idx = np.arange(len(train_labels))
     untouched_idx = np.setdiff1d(full_idx, manip_idx)
+    manip_idx = np.array(manip_idx)
+    untouched_idx = np.array(untouched_idx)
     manip_idx, untouched_idx = torch.from_numpy(manip_idx), torch.from_numpy(untouched_idx)
     return manip_dict, manip_idx, untouched_idx
 
